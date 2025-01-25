@@ -47,10 +47,9 @@ main() {
 }
 
 explode() {
-  echo "$(cat)" | \
-    tr -d ' ' | \
-    awk -F',' "{for(i=1;i<=NF;i++) printf(\"${1:-}:%s \", \$i)}" | \
-    sed 's/ $//'
+  tr -d ' ' | \
+  awk -F',' "{for(i=1;i<=NF;i++) printf(\"${1:-}:%s \", \$i)}" | \
+  sed 's/ $//'
 }
 
 export -f explode
