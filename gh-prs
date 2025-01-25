@@ -1,0 +1,59 @@
+#!/bin/sh
+
+set -e
+set -o errexit -o nounset
+
+MECHA_GH_PRS_ORGS_EXCLUDE_FILTER=${MECHA_GH_PRS_ORGS_EXCLUDE_FILTER:-}
+MECHA_GH_PRS_ORGS_INCLUDE_FILTER=${MECHA_GH_PRS_ORGS_INCLUDE_FILTER:-}
+MECHA_GH_PRS_REPO_EXCLUDE_FILTER=${MECHA_GH_PRS_REPO_EXCLUDE_FILTER:-}
+MECHA_GH_PRS_REPO_INCLUDE_FILTER=${MECHA_GH_PRS_REPO_INCLUDE_FILTER:-}
+
+main() {
+  local ORGS_EXCLUDE_FILTER=$(echo "${MECHA_GH_PRS_ORGS_EXCLUDE_FILTER}" | (explode "-org"))
+  local ORGS_INCLUDE_FILTER=$(echo "${MECHA_GH_PRS_ORGS_INCLUDE_FILTER}" | (explode "org"))
+  local REPO_EXCLUDE_FILTER=$(echo "${MECHA_GH_PRS_REPO_EXCLUDE_FILTER}" | (explode "-repo"))
+  local REPO_INCLUDE_FILTER=$(echo "${MECHA_GH_PRS_REPO_INCLUDE_FILTER}" | (explode "repo"))
+  local FILTERS="${ORGS_INCLUDE_FILTER} ${ORGS_EXCLUDE_FILTER} ${REPO_INCLUDE_FILTER} ${REPO_EXCLUDE_FILTER}"
+  local USERNAME="${1:-@me}"
+
+  # https://docs.github.com/en/search-github/searching-on-github/searching-issues-and-pull-requests
+
+  local INNER_QUERY=$(echo "is:pr is:open archived:false sort:updated-desc review-requested:${USERNAME} ${FILTERS}" | xargs)
+
+  local QUERY="{
+    search(query: \"${INNER_QUERY}\" type: ISSUE first: 100) {
+      nodes {
+        ... on PullRequest {
+          number
+          title
+          repository {
+            nameWithOwner
+          }
+        }
+      }
+    }
+  }
+  "
+
+  local TEMPLATE='
+    {{- range $node := .data.search.nodes -}}
+      {{- printf "- %s: %s (#%.0f) \n" $node.repository.nameWithOwner $node.title $node.number -}}
+    {{- else -}}
+      No Pending Reviews 🏝️
+    {{- end }}
+  '
+
+  GH_PAGER=cat gh api graphql -f query="${QUERY}" --paginate --template="${TEMPLATE}"
+}
+
+explode() {
+  echo "$(cat)" | \
+    tr -d ' ' | \
+    awk -F',' "{for(i=1;i<=NF;i++) printf(\"${1:-}:%s \", \$i)}" | \
+    sed 's/ $//'
+}
+
+export -f explode
+
+main "$@"
+exit 0
